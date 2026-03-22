@@ -919,22 +919,21 @@ export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
 	// We assume that `logicalIndex` relates linearly to `time`.
 	// FIX: Get the ACTUAL logical index of the first bar, don't assume it's 0
 // Use coordinateToTime -> then find coordinate -> then get logical
-const firstBarCoord = timeScale.timeToCoordinate(dataAtIndex0.time as HorzScaleItem);
-
-if (firstBarCoord === null) {
-	console.warn("[interpolateTimeFromLogicalIndex] Could not determine coordinate of first bar.");
+const visibleRange = timeScale.getVisibleLogicalRange();
+if (!visibleRange) {
+	console.warn("[interpolateTimeFromLogicalIndex] Could not get visible logical range.");
 	return null;
 }
 
-const firstBarLogicalIndex = timeScale.coordinateToLogical(firstBarCoord);
-
-if (firstBarLogicalIndex === null) {
-	console.warn("[interpolateTimeFromLogicalIndex] Could not determine logical index of first bar.");
+const barsInfo = series.barsInLogicalRange(visibleRange);
+if (!barsInfo || barsInfo.barsBefore === undefined) {
+	console.warn("[interpolateTimeFromLogicalIndex] Could not get bars info.");
 	return null;
 }
 
+const firstBarLogicalIndex = -barsInfo.barsBefore;
 const logicalDelta = logicalIndex - firstBarLogicalIndex;
-console.log('[DEBUG] interpolateTime:', { logicalIndex, firstBarLogicalIndex, logicalDelta, startTime: Number(startTime), interval });
+console.log('[DEBUG] interpolateTime:', { logicalIndex, firstBarLogicalIndex, logicalDelta, barsBefore: barsInfo.barsBefore, startTime: Number(startTime), interval });
 
 	// Interpolate the time for the given logical index.
 	const interpolatedTime = Number(startTime) + logicalDelta * interval;
