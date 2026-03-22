@@ -917,7 +917,23 @@ export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
 
 	// Calculate the difference in logical units from the first data point.
 	// We assume that `logicalIndex` relates linearly to `time`.
-	const logicalDelta = logicalIndex - 0; // Assuming the first data point (index 0) corresponds to logical 0.
+	// FIX: Get the ACTUAL logical index of the first bar, don't assume it's 0
+// Use coordinateToTime -> then find coordinate -> then get logical
+const firstBarCoord = timeScale.timeToCoordinate(dataAtIndex0.time as HorzScaleItem);
+
+if (firstBarCoord === null) {
+	console.warn("[interpolateTimeFromLogicalIndex] Could not determine coordinate of first bar.");
+	return null;
+}
+
+const firstBarLogicalIndex = timeScale.coordinateToLogical(firstBarCoord);
+
+if (firstBarLogicalIndex === null) {
+	console.warn("[interpolateTimeFromLogicalIndex] Could not determine logical index of first bar.");
+	return null;
+}
+
+const logicalDelta = logicalIndex - firstBarLogicalIndex;
 
 	// Interpolate the time for the given logical index.
 	const interpolatedTime = Number(startTime) + logicalDelta * interval;
