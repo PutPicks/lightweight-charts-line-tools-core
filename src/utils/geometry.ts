@@ -864,86 +864,80 @@ export function convertUTCTimestampToDateString(timestamp: UTCTimestamp): string
  * @returns The extrapolated `Time`, or `null` if the series has insufficient data ( < 2 bars) to determine an interval.
  */
 export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
-	chart: IChartApiBase<HorzScaleItem>, // NEW: Now accepts chart instance
-	series: ISeriesApi<SeriesType, HorzScaleItem>, // Keep series for data access
-	logicalIndex: number
+        chart: IChartApiBase<HorzScaleItem>,
+        series: ISeriesApi<SeriesType, HorzScaleItem>,
+        logicalIndex: number
 ): Time | null {
-	if (!chart || !series) { // Also check if chart is defined
-		console.warn("[interpolateTimeFromLogicalIndex] chart or series is not defined.");
-		return null;
-	}
+        if (!chart || !series) {
+                console.warn("[interpolateTimeFromLogicalIndex] chart or series is not defined.");
+                return null;
+        }
 
-	const timeScale = chart.timeScale(); // Access timeScale directly from chart
+        const timeScale = chart.timeScale();
 
-	// Retrieve data for the first two points in the series to calculate the time interval.
-	// This assumes that there are at least two data points to establish a reliable interval.
-	// If the chart starts empty, this will need a fallback (e.g., using default bar spacing).
-	const dataAtIndex0 = series.dataByIndex(0, 0);
-	const dataAtIndex1 = series.dataByIndex(1, 0);
+        // First, try to get time directly from an existing bar at this logical index
+        const dataAtLogicalIndex = series.dataByIndex(Math.round(logicalIndex) as Logical, 0);
+        if (dataAtLogicalIndex) {
+                return dataAtLogicalIndex.time as Time;
+        }
 
-	if (!dataAtIndex0 || !dataAtIndex1) {
-		// Fallback for very few data points: try to use visible logical range or timeScale options
-		const visibleLogicalRange = timeScale.getVisibleLogicalRange();
+        // No data at this logical index - we're in blank space (future)
+        // Get two consecutive bars to calculate the interval
+        const dataAtIndex0 = series.dataByIndex(0, 0);
+        const dataAtIndex1 = series.dataByIndex(1, 0);
 
-		if (visibleLogicalRange && visibleLogicalRange.to - visibleLogicalRange.from > 0) {
-			const logicalSpan = visibleLogicalRange.to - visibleLogicalRange.from;
-			// Use coordinateToTime on the chart's time scale directly
-			const timeFrom = timeScale.coordinateToTime(timeScale.logicalToCoordinate(visibleLogicalRange.from) as Coordinate) as number;
-			const timeTo = timeScale.coordinateToTime(timeScale.logicalToCoordinate(visibleLogicalRange.to) as Coordinate) as number;
+        if (!dataAtIndex0 || !dataAtIndex1) {
+                console.warn("[interpolateTimeFromLogicalIndex] Not enough data points for interpolation.");
+                return null;
+        }
 
+        const time0 = typeof dataAtIndex0.time === 'string'
+                ? convertDateStringToUTCTimestamp(dataAtIndex0.time as string)
+                : dataAtIndex0.time as UTCTimestamp;
+        const time1 = typeof dataAtIndex1.time === 'string'
+                ? convertDateStringToUTCTimestamp(dataAtIndex1.time as string)
+                : dataAtIndex1.time as UTCTimestamp;
 
-			if (timeFrom !== null && timeTo !== null && logicalSpan > 0) {
-				const timeSpan = timeTo - timeFrom;
-				const timePerLogicalUnit = timeSpan / logicalSpan;
-				const logicalOffset = logicalIndex - visibleLogicalRange.from;
-				return (timeFrom + logicalOffset * timePerLogicalUnit) as UTCTimestamp;
-			}
-		}
+        const interval = Number(time1) - Number(time0);
+        if (interval === 0) {
+                console.warn("[interpolateTimeFromLogicalIndex] Zero interval between bars.");
+                return null;
+        }
 
-		console.warn("[interpolateTimeFromLogicalIndex] Not enough data points or visible range for interpolation. Cannot determine time.");
-		// If we can't get a reliable interval, return null.
-		return null;
-	}
+        // Get the logical index of the first data bar
+        const firstBarCoord = timeScale.timeToCoordinate(dataAtIndex0.time as unknown as HorzScaleItem);
+        if (firstBarCoord === null) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not get coordinate for first bar.");
+                return null;
+        }
+        
+        const firstBarLogicalIndex = timeScale.coordinateToLogical(firstBarCoord);
+        if (firstBarLogicalIndex === null) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not get logical index for first bar.");
+                return null;
+        }
 
-	const startTime = typeof dataAtIndex0.time === 'string'
-		? convertDateStringToUTCTimestamp(dataAtIndex0.time)
-		: dataAtIndex0.time;
-	const endTime = typeof dataAtIndex1.time === 'string'
-		? convertDateStringToUTCTimestamp(dataAtIndex1.time)
-		: dataAtIndex1.time;
+        // Calculate the offset from the first bar
+        const logicalDelta = logicalIndex - firstBarLogicalIndex;
 
-	// Calculate the time interval between the two data points (e.g., 86400 for daily bars).
-	const interval = (Number(endTime) - Number(startTime));
+        // Interpolate the time
+        const interpolatedTime = Number(time0) + logicalDelta * interval;
 
-	// Calculate the difference in logical units from the first data point.
-	// We assume that `logicalIndex` relates linearly to `time`.
-	// FIX: Get the ACTUAL logical index of the first bar, don't assume it's 0
-// Use coordinateToTime -> then find coordinate -> then get logical
-const visibleRange = timeScale.getVisibleLogicalRange();
-if (!visibleRange) {
-	console.warn("[interpolateTimeFromLogicalIndex] Could not get visible logical range.");
-	return null;
-}
+        console.log('[DEBUG] interpolateTime:', { 
+                logicalIndex, 
+                firstBarLogicalIndex, 
+                logicalDelta, 
+                startTime: Number(time0), 
+                interval,
+                result: interpolatedTime
+        });
 
-const barsInfo = series.barsInLogicalRange(visibleRange);
-if (!barsInfo || barsInfo.barsBefore === undefined) {
-	console.warn("[interpolateTimeFromLogicalIndex] Could not get bars info.");
-	return null;
-}
-
-const firstBarLogicalIndex = -barsInfo.barsBefore;
-const logicalDelta = logicalIndex - firstBarLogicalIndex;
-console.log('[DEBUG] interpolateTime:', { logicalIndex, firstBarLogicalIndex, logicalDelta, barsBefore: barsInfo.barsBefore, startTime: Number(startTime), interval });
-
-	// Interpolate the time for the given logical index.
-	const interpolatedTime = Number(startTime) + logicalDelta * interval;
-
-	// Return the interpolated time in the correct format (UTCTimestamp or string).
-	if (typeof dataAtIndex0.time === 'string') {
-		return convertUTCTimestampToDateString(interpolatedTime as UTCTimestamp) as string;
-	} else {
-		return interpolatedTime as UTCTimestamp;
-	}
+        // Return in the correct format
+        if (typeof dataAtIndex0.time === 'string') {
+                return convertUTCTimestampToDateString(interpolatedTime as UTCTimestamp) as Time;
+        } else {
+                return interpolatedTime as Time;
+        }
 }
 
 /**
