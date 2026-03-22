@@ -934,6 +934,7 @@ if (firstBarLogicalIndex === null) {
 }
 
 const logicalDelta = logicalIndex - firstBarLogicalIndex;
+console.log('[DEBUG] interpolateTime:', { logicalIndex, firstBarLogicalIndex, logicalDelta, startTime: Number(startTime), interval });
 
 	// Interpolate the time for the given logical index.
 	const interpolatedTime = Number(startTime) + logicalDelta * interval;
