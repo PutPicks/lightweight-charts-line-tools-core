@@ -831,14 +831,6 @@ export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
 
         const timeScale = chart.timeScale();
 
-        // First, try to get time directly from an existing bar at this logical index
-        const dataAtLogicalIndex = series.dataByIndex(Math.round(logicalIndex) as Logical, 0);
-        if (dataAtLogicalIndex) {
-                console.log('[DEBUG interpolateTimeFromLogicalIndex] Found data at index', { logicalIndex, roundedIndex: Math.round(logicalIndex), returnedTime: dataAtLogicalIndex.time });
-                return dataAtLogicalIndex.time as Time;
-        }
-
-        // No data at this logical index - we're in blank space (future)
         // Get two consecutive bars to calculate the interval
         const dataAtIndex0 = series.dataByIndex(0, 0);
         const dataAtIndex1 = series.dataByIndex(1, 0);
@@ -880,7 +872,15 @@ export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
         // Interpolate the time
         const interpolatedTime = Number(time0) + logicalDelta * interval;
 
-        console.log('[DEBUG interpolateTimeFromLogicalIndex] Extrapolated', { logicalIndex, firstBarLogicalIndex, logicalDelta, time0, interval, interpolatedTime });
+        console.log('[DEBUG interpolateTimeFromLogicalIndex] Calculated', { 
+                logicalIndex, 
+                firstBarLogicalIndex, 
+                logicalDelta, 
+                time0, 
+                interval, 
+                interpolatedTime,
+                interpolatedDate: new Date(interpolatedTime * 1000).toISOString()
+        });
 
         // Return in the correct format
         if (typeof dataAtIndex0.time === 'string') {
