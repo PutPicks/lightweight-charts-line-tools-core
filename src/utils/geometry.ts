@@ -831,59 +831,85 @@ export function interpolateTimeFromLogicalIndex<HorzScaleItem>(
 
         const timeScale = chart.timeScale();
 
-        // Get two consecutive bars to calculate the interval
-        const dataAtIndex0 = series.dataByIndex(0, 0);
-        const dataAtIndex1 = series.dataByIndex(1, 0);
+        // Get the coordinate for this logical index
+        const coord = timeScale.logicalToCoordinate(logicalIndex as Logical);
+        if (coord === null) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not convert logical index to coordinate.");
+                return null;
+        }
 
-        if (!dataAtIndex0 || !dataAtIndex1) {
+        // Try to get time directly from the coordinate
+        const directTime = timeScale.coordinateToTime(coord);
+        if (directTime !== null) {
+                console.log('[DEBUG interpolateTimeFromLogicalIndex] Direct conversion succeeded', {
+                        logicalIndex,
+                        coord,
+                        directTime
+                });
+                return directTime as Time;
+        }
+
+        // We're in blank space - need to extrapolate
+        // Get the last two data bars to calculate the interval
+        const dataLength = (series.data() as any[]).length;
+        if (dataLength < 2) {
                 console.warn("[interpolateTimeFromLogicalIndex] Not enough data points for interpolation.");
                 return null;
         }
 
-        const time0 = typeof dataAtIndex0.time === 'string'
-                ? convertDateStringToUTCTimestamp(dataAtIndex0.time as string)
-                : dataAtIndex0.time as UTCTimestamp;
-        const time1 = typeof dataAtIndex1.time === 'string'
-                ? convertDateStringToUTCTimestamp(dataAtIndex1.time as string)
-                : dataAtIndex1.time as UTCTimestamp;
+        const lastBar = series.dataByIndex(dataLength - 1, 0);
+        const secondLastBar = series.dataByIndex(dataLength - 2, 0);
 
-        const interval = Number(time1) - Number(time0);
+        if (!lastBar || !secondLastBar) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not get last bars for interpolation.");
+                return null;
+        }
+
+        const lastTime = typeof lastBar.time === 'string'
+                ? convertDateStringToUTCTimestamp(lastBar.time as string)
+                : lastBar.time as UTCTimestamp;
+        const secondLastTime = typeof secondLastBar.time === 'string'
+                ? convertDateStringToUTCTimestamp(secondLastBar.time as string)
+                : secondLastBar.time as UTCTimestamp;
+
+        const interval = Number(lastTime) - Number(secondLastTime);
         if (interval === 0) {
                 console.warn("[interpolateTimeFromLogicalIndex] Zero interval between bars.");
                 return null;
         }
 
-        // Get the logical index of the first data bar
-        const firstBarCoord = timeScale.timeToCoordinate(dataAtIndex0.time as unknown as HorzScaleItem);
-        if (firstBarCoord === null) {
-                console.warn("[interpolateTimeFromLogicalIndex] Could not get coordinate for first bar.");
+        // Get the logical index of the last data bar
+        const lastBarCoord = timeScale.timeToCoordinate(lastBar.time as unknown as HorzScaleItem);
+        if (lastBarCoord === null) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not get coordinate for last bar.");
                 return null;
         }
         
-        const firstBarLogicalIndex = timeScale.coordinateToLogical(firstBarCoord);
-        if (firstBarLogicalIndex === null) {
-                console.warn("[interpolateTimeFromLogicalIndex] Could not get logical index for first bar.");
+        const lastBarLogicalIndex = timeScale.coordinateToLogical(lastBarCoord);
+        if (lastBarLogicalIndex === null) {
+                console.warn("[interpolateTimeFromLogicalIndex] Could not get logical index for last bar.");
                 return null;
         }
 
-        // Calculate the offset from the first bar
-        const logicalDelta = logicalIndex - firstBarLogicalIndex;
+        // Calculate how many bars past the last data bar
+        const barsFromLast = logicalIndex - lastBarLogicalIndex;
 
-        // Interpolate the time
-        const interpolatedTime = Number(time0) + logicalDelta * interval;
+        // Extrapolate the time
+        const interpolatedTime = Number(lastTime) + barsFromLast * interval;
 
-        console.log('[DEBUG interpolateTimeFromLogicalIndex] Calculated', { 
+        console.log('[DEBUG interpolateTimeFromLogicalIndex] Extrapolated from last bar', { 
                 logicalIndex, 
-                firstBarLogicalIndex, 
-                logicalDelta, 
-                time0, 
+                lastBarLogicalIndex, 
+                barsFromLast, 
+                lastTime,
+                lastTimeDate: new Date(Number(lastTime) * 1000).toISOString(),
                 interval, 
                 interpolatedTime,
                 interpolatedDate: new Date(interpolatedTime * 1000).toISOString()
         });
 
         // Return in the correct format
-        if (typeof dataAtIndex0.time === 'string') {
+        if (typeof lastBar.time === 'string') {
                 return convertUTCTimestampToDateString(interpolatedTime as UTCTimestamp) as Time;
         } else {
                 return interpolatedTime as Time;
