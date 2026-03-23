@@ -931,48 +931,58 @@ export function interpolateLogicalIndexFromTime<HorzScaleItem>(
 
         const timeScale = chart.timeScale();
 
-        // First, try to get the logical index directly from the timeScale
-        const directCoord = timeScale.timeToCoordinate(timestamp as unknown as HorzScaleItem);
-        if (directCoord !== null) {
-                const directLogical = timeScale.coordinateToLogical(directCoord);
-                if (directLogical !== null) {
-                        console.log('[DEBUG interpolateLogicalIndexFromTime] Direct conversion', { timestamp, directCoord, directLogical });
-                        return directLogical;
+        // Convert timestamp to coordinate, then to logical index
+        const coord = timeScale.timeToCoordinate(timestamp as unknown as HorzScaleItem);
+        if (coord !== null) {
+                const logical = timeScale.coordinateToLogical(coord);
+                if (logical !== null) {
+                        console.log('[DEBUG interpolateLogicalIndexFromTime] Direct conversion succeeded', {
+                                timestamp,
+                                coord,
+                                logical
+                        });
+                        return logical;
                 }
         }
 
-        // Fallback: extrapolate for timestamps outside the data range
-        const dataAtIndex0 = series.dataByIndex(0, 0);
-        const dataAtIndex1 = series.dataByIndex(1, 0);
-
-        if (!dataAtIndex0 || !dataAtIndex1) {
+        // Fallback: extrapolate for timestamps outside the data range (blank space)
+        const dataLength = (series.data() as any[]).length;
+        if (dataLength < 2) {
                 console.warn("[interpolateLogicalIndexFromTime] Not enough data points to interpolate.");
                 return null;
         }
 
-        const time0 = typeof dataAtIndex0.time === 'string'
-                ? convertDateStringToUTCTimestamp(dataAtIndex0.time as string)
-                : dataAtIndex0.time as UTCTimestamp;
-        const time1 = typeof dataAtIndex1.time === 'string'
-                ? convertDateStringToUTCTimestamp(dataAtIndex1.time as string)
-                : dataAtIndex1.time as UTCTimestamp;
+        const lastBar = series.dataByIndex(dataLength - 1, 0);
+        const secondLastBar = series.dataByIndex(dataLength - 2, 0);
 
-        const interval = Number(time1) - Number(time0);
+        if (!lastBar || !secondLastBar) {
+                console.warn("[interpolateLogicalIndexFromTime] Could not get last bars for interpolation.");
+                return null;
+        }
+
+        const lastTime = typeof lastBar.time === 'string'
+                ? convertDateStringToUTCTimestamp(lastBar.time as string)
+                : lastBar.time as UTCTimestamp;
+        const secondLastTime = typeof secondLastBar.time === 'string'
+                ? convertDateStringToUTCTimestamp(secondLastBar.time as string)
+                : secondLastBar.time as UTCTimestamp;
+
+        const interval = Number(lastTime) - Number(secondLastTime);
         if (interval === 0) {
                 console.warn("[interpolateLogicalIndexFromTime] Zero interval between bars.");
                 return null;
         }
 
-        // Get the logical index of the first data bar
-        const firstBarCoord = timeScale.timeToCoordinate(dataAtIndex0.time as unknown as HorzScaleItem);
-        if (firstBarCoord === null) {
-                console.warn("[interpolateLogicalIndexFromTime] Could not get coordinate for first bar.");
+        // Get the logical index of the last data bar
+        const lastBarCoord = timeScale.timeToCoordinate(lastBar.time as unknown as HorzScaleItem);
+        if (lastBarCoord === null) {
+                console.warn("[interpolateLogicalIndexFromTime] Could not get coordinate for last bar.");
                 return null;
         }
         
-        const firstBarLogicalIndex = timeScale.coordinateToLogical(firstBarCoord);
-        if (firstBarLogicalIndex === null) {
-                console.warn("[interpolateLogicalIndexFromTime] Could not get logical index for first bar.");
+        const lastBarLogicalIndex = timeScale.coordinateToLogical(lastBarCoord);
+        if (lastBarLogicalIndex === null) {
+                console.warn("[interpolateLogicalIndexFromTime] Could not get logical index for last bar.");
                 return null;
         }
 
@@ -981,13 +991,18 @@ export function interpolateLogicalIndexFromTime<HorzScaleItem>(
                 ? convertDateStringToUTCTimestamp(timestamp)
                 : Number(timestamp);
 
-        // Calculate how many bars from the first bar
-        const barOffset = (givenTimeNum - Number(time0)) / interval;
+        // Calculate how many bars from the last bar
+        const barsFromLast = (givenTimeNum - Number(lastTime)) / interval;
 
-        // Add to the first bar's logical index
-        const logicalIndex = firstBarLogicalIndex + barOffset;
+        // Add to the last bar's logical index
+        const logicalIndex = lastBarLogicalIndex + barsFromLast;
 
-        console.log('[DEBUG interpolateLogicalIndexFromTime] Extrapolated', { timestamp, firstBarLogicalIndex, barOffset, logicalIndex });
+        console.log('[DEBUG interpolateLogicalIndexFromTime] Extrapolated from last bar', { 
+                timestamp, 
+                lastBarLogicalIndex, 
+                barsFromLast, 
+                logicalIndex 
+        });
 
         return logicalIndex as Logical;
 }
