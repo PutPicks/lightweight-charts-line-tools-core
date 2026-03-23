@@ -925,30 +925,31 @@ export abstract class BaseLineTool<HorzScaleItem> extends PriceDataSource<HorzSc
 	 * @returns A {@link Point} with screen coordinates, or `null` if conversion fails.
 	 */
 	public pointToScreenPoint(point: LineToolPoint): Point | null {
-		const timeScale = this._chart.timeScale();
-
-		// CORRECTED: Assert point.timestamp as UTCTimestamp to match the 'Time' type expectation.
-		const logicalIndex = interpolateLogicalIndexFromTime(this._chart, this._series, point.timestamp as UTCTimestamp);
-
-		if (logicalIndex === null) {
-			console.warn(`[BaseLineTool] pointToScreenPoint: Could not determine logical index for timestamp: ${point.timestamp}.`);
-			return null;
-		}
- 
-		// Use logicalToCoordinate for x-coordinate based on the logical index.
-		const x = timeScale.logicalToCoordinate(logicalIndex);
-
-		// Use the series' priceToCoordinate method directly.
-		const y = this._series.priceToCoordinate(point.price);
-
-		// Ensure conversions were successful and resulted in valid coordinates.
-		if (x === null || y === null) {
-			console.warn(`[BaseLineTool] pointToScreenPoint: Coordinate conversion failed for point: ${JSON.stringify(point)}. Received x=${x}, y=${y}`);
-			return null;
-		}
-
-		return new Point(x, y);
-	}
+                const timeScale = this._chart.timeScale();
+                
+                // Use timeToCoordinate directly for x-coordinate
+                const x = timeScale.timeToCoordinate(point.timestamp as any);
+                
+                // Use the series' priceToCoordinate method directly.
+                const y = this._series.priceToCoordinate(point.price);
+                
+                // Ensure conversions were successful and resulted in valid coordinates.
+                if (x === null || y === null) {
+                        // Fallback to interpolation for timestamps outside data range (blank space)
+                        const logicalIndex = interpolateLogicalIndexFromTime(this._chart, this._series, point.timestamp as UTCTimestamp);
+                        if (logicalIndex === null) {
+                                console.warn(`[BaseLineTool] pointToScreenPoint: Could not determine position for timestamp: ${point.timestamp}.`);
+                                return null;
+                        }
+                        const fallbackX = timeScale.logicalToCoordinate(logicalIndex);
+                        if (fallbackX === null || y === null) {
+                                console.warn(`[BaseLineTool] pointToScreenPoint: Coordinate conversion failed for point: ${JSON.stringify(point)}. Received x=${fallbackX}, y=${y}`);
+                                return null;
+                        }
+                        return new Point(fallbackX, y);
+                }
+                return new Point(x, y);
+        }
 
 	/**
 	 * Transforms a pixel screen coordinate into a logical data point (timestamp/price).
