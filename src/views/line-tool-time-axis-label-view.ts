@@ -236,8 +236,11 @@ export class LineToolTimeAxisLabelView<HorzScaleItem> implements ITimeAxisView {
 		// This ensures we get the *exact* object expected by LWC's internal APIs.
 		const internalHorzItemForFormatting = this._tool.horzScaleBehavior.convertHorzItemToInternal(timeAsHorzScaleItem);
 
-		// Apply Formatting
-		data.text = this._tool.horzScaleBehavior.formatHorzItem(internalHorzItemForFormatting);
+		// Apply Formatting - reformat to "Mon D, YYYY" without time
+		const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+		const ts = point.timestamp as number;
+		const dt = new Date(ts * 1000);
+		data.text = `${months[dt.getUTCMonth()]} ${dt.getUTCDate()}, ${dt.getUTCFullYear()}`;
 
 		// --- 2. COORDINATE FIX: Get Interpolated Logical Index for Blank Space Plotting ---
 
